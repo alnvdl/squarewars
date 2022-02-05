@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --border-color: #bbb;
+            --animations: 250ms;
+            --player1: #4444ff;
+            --player2: #ff44ff;
+            --player1-hl: #aaaaff;
+            --player2-hl: #ffaaff;
+        }
+
+        body {
+            font-family: sans-serif;
+        }
+
+        #game {
+            width: 70vh;
+            margin: auto;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            height: 70vh;
+            width: 70vh;
+            gap: 1px;
+            margin: auto;
+        }
+
+        @media (max-width: 1000px) {
+            #game {
+                width: 90vw;
+                margin: auto;
+            }
+
+            #board {
+                height: 70vw;
+                width: 70vw;
+            }
+        }
+
+        .square {
+            box-shadow: 0 0 0 1px var(--border-color);
+        }
+
+        .player {
+            font-weight: bold;
+        }
+
+        .player1,
+        .player2 {
+            transition: background-color var(--animations), color var(--animations);
+        }
+
+        .player1 {
+            color: var(--player1);
+            font-weight: bold;
+        }
+
+        .player2 {
+            color: var(--player2);
+            font-weight: bold;
+        }
+
+        .player1.active {
+            background-color: var(--player1);
+        }
+
+        .player2.active {
+            background-color: var(--player2);
+        }
+
+        .selecting {
+            filter: brightness(0.85);
+        }
+
+        .player1.possible {
+            background-color: var(--player1-hl);
+        }
+
+        .player2.possible {
+            background-color: var(--player2-hl);
+        }
+
+        #status {
+            font-size: 3vh;
+            display: grid;
+            grid-template-columns: 7fr 3fr;
+            align-items: center;
+            margin-bottom: 2vh;
+        }
+
+        #score {
+            text-align: end;
+        }
+
+        #otherplayer {
+            margin-top: 2vh;
+            font-size: 0.75rem;
+        }
+
+        #agressiveness-selector {
+            text-align: center;
+            display: grid;
+            grid-template-columns: 1fr 3fr 1fr;
+            align-items: center;
+            margin-top: 1vh;
+        }
+
+        #agressiveness-selector div {
+            vertical-align: middle;
+        }
+
+        #aggressiveness {
+            width: 100%;
+        }
+    </style>
+    <title>squarewars</title>
+</head>
+
+<body>
+    <div id="game">
+        <div id="status">
+            <div id="turn">It's <span class="player"></span> turn.</div>
+            <div id="winner"><span class="player"></span> won!</div>
+            <div id="tie">It's a tie!</div>
+            <div id="score">
+                <span class="player1">0</span> x <span class="player2">0</span>
+            </div>
+        </div>
+        <div id="board"></div>
+        <div id="otherplayer">
+            <div>
+                <span class="player2">Player 2</span> is a bot.
+            </div>
+            <div id="agressiveness-selector">
+                <div class="aggressiveness-label">Clueless</div>
+                <input type="range" id="aggressiveness" min="0" max="100" />
+                <div class="aggressiveness-label">Expert</div>
+            </div>
+        </div>
+        <script>
+            const EMPTY = "";
+            const PLAYER1 = "player1";
+            const PLAYER2 = "player2";
+            const DEFAULT_BOT_AGRESSIVENESS = 0.5;
+
+            const OTHER_PLAYER = player => {
+                if (player === PLAYER1) {
+                    return PLAYER2;
+                }
+                return PLAYER1;
+            }
+
+            const random = arr => arr[Math.floor(Math.random() * arr.length)];
+
+            class Board {
+                constructor(parent, width, height) {
+                    this.player = PLAYER1;
+                    this.parent = parent;
+                    this.width = width;
+                    this.height = height;
+                    this.state = new Array(height).fill(EMPTY).map(x => new Array(width).fill(EMPTY));
+                    this.state[0][0] = PLAYER1;
+                    this.state[height - 1][0] = PLAYER1;
+                    this.state[0][width - 1] = PLAYER2;
+                    this.state[height - 1][width - 1] = PLAYER2;
+                    this.state.forEach((row, y) => {
+                        row.forEach((value, x) => {
+                            let square = document.createElement("div");
+                            square.dataset.row = y;
+                            square.dataset.column = x;
+                            square.classList.add("square");
+                            this.parent.appendChild(square);
+                        });
+                    });
+                    this.bot_agressiveness = DEFAULT_BOT_AGRESSIVENESS;
+
+                    this.selected = null;
+                    this.draw();
+                }
+
+                get(x, y) {
+                    return this.state[y][x];
+                }
+
+                set(x, y, player) {
+                    this.state[y][x] = player;
+                }
+
+                select(player, x, y) {
+                    if (this.get(x, y) === player) {
+                        this.selected = [x, y];
+                    }
+                    this.draw();
+                }
+
+                put(player, x, y) {
+                    this.state[y][x] = player;
+                    this.settle(player, x, y);
+                    this.selected = null;
+                    this.player = OTHER_PLAYER(player);
+                    let winner = this.victory();
+                    this.draw(winner);
+                    if (winner == undefined && this.player === PLAYER2) {
+                        let next = this.auto(PLAYER2, this.bot_agressiveness);
+                        if (next) {
+                            setTimeout(() => {
+                                this.select(PLAYER2, ...next);
+                            }, 250);
+                            setTimeout(() => {
+                                this.put(PLAYER2, ...next);
+                            }, 500);
+                        }
+                    }
+                }
+
+                settle(player, x, y) {
+                    for (const [nx, ny] of this.near(x, y, v => v !== EMPTY && v !== player)) {
+                        this.set(nx, ny, player);
+                    }
+                }
+
+                set_bot_aggressiveness(value) {
+                    this.bot_agressiveness = value;
+                }
+
+                auto(player, aggressiveness) {
+                    let best = [];
+                    best.score = 0;
+
+                    for (let y = 0; y < this.state.length; y++) {
+                        for (let x = 0; x < this.state[y].length; x++) {
+                            if (this.get(x, y) !== player) {
+                                continue;
+                            }
+                            let possible = this.near(x, y, v => v === EMPTY);
+                            if (possible.length > 0) {
+                                possible.forEach(([x, y]) => {
+                                    let would_take = this.near(x, y, v => v === OTHER_PLAYER(player)).length;
+                                    // The lower aggressiveness, the more
+                                    // likely an arbitraty move is considered
+                                    // good.
+                                    if (Math.random() > aggressiveness) {
+                                        best.push([x, y]);
+                                        return
+                                    }
+                                    if (would_take == best.score) {
+                                        best.push([x, y]);
+                                    } else if (would_take > best.score) {
+                                        best = [[x, y]];
+                                        best.score = would_take;
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    return random(best);
+                }
+
+                // near returns all positions that area adjacent to [x, y]. If
+                // filter is given, only squares whose value pass the filter
+                // function are returned.
+                near(x, y, filter) {
+                    let near = [];
+                    for (const xdelta of [-1, 0, 1]) {
+                        for (const ydelta of [-1, 0, 1]) {
+                            if (xdelta === 0 && ydelta === 0) {
+                                continue;
+                            }
+                            let row = this.state[y + ydelta];
+                            if (row === undefined) {
+                                continue;
+                            }
+                            let col = row[x + xdelta]
+                            if (col === undefined) {
+                                continue;
+                            }
+                            if (filter && filter(col)) {
+                                near.push([x + xdelta, y + ydelta]);
+                            }
+                        }
+                    }
+                    return near;
+                }
+
+                // victory returns who won the match. If the match is still
+                // ongoing, undefined is returned. If it's a tie, null is
+                // returned. Otherwise, the winning player ID is returned.
+                victory() {
+                    let score = {};
+                    score[PLAYER1] = 0;
+                    score[PLAYER2] = 0;
+
+                    let possible = {}
+                    possible[PLAYER1] = false;
+                    possible[PLAYER2] = false;
+
+                    for (let y = 0; y < this.state.length; y++) {
+                        for (let x = 0; x < this.state[y].length; x++) {
+                            if (this.get(x, y) === EMPTY) {
+                                continue
+                            }
+                            score[this.get(x, y)]++;
+                            if (this.near(x, y, v => v === EMPTY).length > 0) {
+                                possible[this.get(x, y)] = true;
+                            }
+                        }
+                    }
+
+                    let take_all_empty = (player) => {
+                        for (let y = 0; y < this.state.length; y++) {
+                            for (let x = 0; x < this.state[y].length; x++) {
+                                if (this.get(x, y) === EMPTY) {
+                                    score[player]++;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!possible[PLAYER1] && !possible[PLAYER2]) {
+                        // Do nothing, score will determine who wins.
+                    } else if (!possible[PLAYER1]) {
+                        take_all_empty(PLAYER2);
+                    } else if (!possible[PLAYER2]) {
+                        take_all_empty(PLAYER1);
+                    } else {
+                        return undefined;
+                    }
+
+                    if (score[PLAYER1] > score[PLAYER2]) {
+                        return PLAYER1;
+                    } else if (score[PLAYER2] > score[PLAYER1]) {
+                        return PLAYER2;
+                    } else {
+                        return null;
+                    }
+
+                    return undefined;
+                }
+
+                draw(winner) {
+                    let score = {};
+                    score[PLAYER1] = 0;
+                    score[PLAYER2] = 0;
+
+                    let possible = [];
+                    if (this.selected) {
+                        possible = this.near(...this.selected, v => v === EMPTY).map(([x, y]) => `${x},${y}`);
+                    }
+                    this.state.forEach((row, y) => {
+                        row.forEach((value, x) => {
+                            let square = document.querySelector(`[data-row="${y}"][data-column="${x}"]`);
+                            square.onclick = null;
+                            square.classList.remove("active", PLAYER1, PLAYER2, "selecting", "possible");
+
+                            if (possible.includes(`${x},${y}`)) {
+                                square.classList.add(this.player);
+                                square.classList.add("possible");
+                                square.onclick = () => {
+                                    this.put(this.player, x, y);
+                                };
+                            }
+                            if (this.selected && this.selected[0] === x && this.selected[1] === y) {
+                                square.classList.add("selecting");
+                            }
+                            if (value !== EMPTY) {
+                                square.classList.add("active");
+                                square.classList.add(value);
+                                score[value]++;
+                            } else if (winner) {
+                                score[winner]++;
+                            }
+
+                            if (winner === null) {
+                                score[PLAYER1] = (this.height * this.width) / 2;
+                                score[PLAYER2] = (this.height * this.width) / 2;;
+                            }
+
+                            if (value === this.player) {
+                                square.onclick = () => {
+                                    this.select(this.player, x, y);
+                                };
+                            }
+                        });
+                    });
+
+                    let turnElem = document.querySelector("#turn");
+                    let winnerElem = document.querySelector("#winner");
+                    let tieElem = document.querySelector("#tie");
+
+                    if (winner === undefined) {
+                        turnElem.style.display = 'block';
+                        winnerElem.style.display = 'none';
+                        tieElem.style.display = 'none';
+
+                        let turnPlayerElem = document.querySelector("#turn .player");
+                        turnPlayerElem.textContent = this.player === PLAYER1 ? "Player 1's" : "Player 2's";
+                        turnPlayerElem.classList.remove(PLAYER1, PLAYER2);
+                        turnPlayerElem.classList.add(this.player);
+                    } else if (winner === null) {
+                        turnElem.style.display = 'none';
+                        winnerElem.style.display = 'none';
+                        tieElem.style.display = 'block';
+                    } else {
+                        turnElem.style.display = 'none';
+                        winnerElem.style.display = 'block';
+                        tieElem.style.display = 'none';
+
+                        let winnerPlayerElem = document.querySelector("#winner .player");
+                        winnerPlayerElem.textContent = winner === PLAYER1 ? "Player 1" : "Player 2";
+                        winnerPlayerElem.classList.add(winner);
+
+                        this.state.forEach((row, y) => {
+                            row.forEach((value, x) => {
+                                let square = document.querySelector(`[data-row="${y}"][data-column="${x}"]`);
+                                square.onclick = null;
+                            });
+                        });
+                    }
+
+                    document.querySelector("#score .player1").textContent = "" + score[PLAYER1];
+                    document.querySelector("#score .player2").textContent = "" + score[PLAYER2];
+                }
+            }
+
+            let board = new Board(document.querySelector("#board"), 8, 8);
+            document.querySelector("#aggressiveness").addEventListener("change", (e) => {
+                board.set_bot_aggressiveness(e.target.value / 100)
+            });
+            document.querySelector("#aggressiveness").value = DEFAULT_BOT_AGRESSIVENESS * 100;
+        </script>
+</body>
+
+</html>
