@@ -20,7 +20,7 @@
         }
 
         #game {
-            width: 70vh;
+            width: 75vh;
             margin: auto;
         }
 
@@ -41,8 +41,8 @@
             }
 
             #board {
-                height: 70vw;
-                width: 70vw;
+                height: 88vw;
+                width: 88vw;
             }
         }
 
@@ -214,10 +214,10 @@
                         if (next) {
                             setTimeout(() => {
                                 this.select(PLAYER2, ...next);
-                            }, 250);
+                            }, 350);
                             setTimeout(() => {
                                 this.put(PLAYER2, ...next);
-                            }, 500);
+                            }, 700);
                         }
                     }
                 }
@@ -372,12 +372,15 @@
                             if (this.selected && this.selected[0] === x && this.selected[1] === y) {
                                 square.classList.add("selecting");
                             }
+
+                            if (winner && value === EMPTY) {
+                                value = winner;
+                            }
+
                             if (value !== EMPTY) {
                                 square.classList.add("active");
                                 square.classList.add(value);
                                 score[value]++;
-                            } else if (winner) {
-                                score[winner]++;
                             }
 
                             if (winner === null) {
